@@ -1,0 +1,117 @@
+create database SmallInventoryDB
+go
+use SmallInventoryDB
+create table Users(
+UserId int primary key identity(1,1),
+UserName nvarchar(50) not null unique,
+Password nvarchar(128) not null,
+Permissions int not null,
+CreatedByUserId int foreign key references Users(UserId)  null,
+)
+insert into Users (UserName,Password,Permissions)values('Admin','$2a$11$CqVwWPBKRVRiJIT7QadVxu88BggwF4RoCDnWns7a5RZGj0Mg7aL7y',31);--Password hashed 123456
+
+
+Create table Products
+(ProductId int primary key identity(1,1),
+ProductName nvarchar(80) not null unique,
+
+Notes nvarchar(2000) null,
+CreatedByUserId int foreign key references Users(UserId) not null,
+AddDateTime dateTime2 default getdate() not null)
+
+
+create table InvoiceTypes(
+TypeId tinyint primary key identity(1,1),
+TypeName nvarchar(30) unique not null,
+)
+
+create table Batches(
+batchId int primary key identity(1,1),
+productId int Foreign key references Products(productId) not null,
+Quantity decimal(15,3) not null check(Quantity>=0),
+PurchasePrice decimal(15,3) not null check(purchasePrice>=0),
+SalePrice decimal(15,3) check(saleprice>=0),
+CreatedByUserId int foreign key references Users(UserId)  null,
+LastUpdatedUserId int foreign key references Users(UserId)  null,
+AddDateTime dateTime2 not null,
+LastUpdateDateTime dateTime2 not null,
+Notes nvarchar(2000) null,
+isActive bit not null default 0,
+)
+
+
+
+insert into InvoiceTypes values('Sale'),('ReturnSale'),('Purchase'),('ReturnPurchase'),('Expenses');
+
+create table Invoices(
+InvoiceId int primary key identity(1,1),
+TypeId tinyint foreign key references InvoiceTypes(TypeId),
+TotalPurchasePrice decimal(15,3)not null check (TotalPurchasePrice>=0),
+TotalSalePrice decimal(15,3)  null check (TotalSalePrice>=0),
+InvoiceDateTime dateTime2 not null,
+Notes nvarchar(2000) null,
+prevInvoiceId int foreign key references Invoices(InvoiceID) null,
+CreatedByUserId int foreign key references Users(UserId) not null,
+
+)
+
+
+create table InvoiceItems(
+ItemId int primary key identity(1,1),
+InvoiceId int foreign key references Invoices(InvoiceID)not null,
+BatchID int foreign key references Batches(BatchID)not null,
+PurchasePrice decimal(15,3) not null check(purchasePrice>=0),
+SalePrice decimal(15,3) check(saleprice>=0),
+Quantity decimal(15,3) not null check(Quantity>0),
+
+)
+create NONClustered index idx_InvoiceId_InvoiceItems on InvoiceItems(invoiceId)
+create Table ReasonsOfMovement(
+ReasonId tinyint primary key identity(1,1),
+ReasonName nvarchar(60) unique not null,
+)
+
+insert into ReasonsOfMovement values ('Sale'),('Return Sale'),('Purchase'),('Return Purchase'),('Disposal Stock')
+create table StockMovements(
+Id int primary key identity(1,1),
+BatchId int foreign key references Batches(BatchId)not null,
+IsIn bit not null, 
+Quantity decimal(15,3) not null check(Quantity>=0),
+PurchasePrice decimal(15,3) not null check(purchasePrice>=0),
+
+DateTimeMove datetime not null,
+Reason tinyint  foreign key references ReasonsOfMovement(ReasonId) not null,
+CreatedByUserId int foreign key references Users(UserId) not null
+)
+
+
+go
+create view BatchesWithProductsAndUsersName
+as
+select b.*,P.ProductName,u1.UserName As CreatedByUsername,u2.UserName As LastUpdatedByUsername
+from Batches b join Products p on b.productId=p.ProductId join  Users u1 on b.CreatedByUserId=u1.UserId
+left join Users u2 on b.LastUpdatedUserId=u2.UserId
+go
+create view RemainingInvoiceItemsFromRetuns as
+with returnItems as(
+select
+it.BatchID,i.prevInvoiceId,sum(it.Quantity) as ReturnedQuantity
+from 
+InvoiceItems it
+join Invoices i on it.InvoiceId=i.InvoiceId where i.prevInvoiceId is not null
+group by it.BatchID,it.SalePrice,i.prevInvoiceId
+
+
+)
+, remainingItemsTable as(
+select i.ItemId,i.BatchID,i.InvoiceId,i.PurchasePrice,i.SalePrice
+,(i.Quantity-ISNULL(ri.ReturnedQuantity,0)) as Quantity from InvoiceItems i left join returnItems ri on i.InvoiceId=ri.prevInvoiceId
+and i.BatchID=ri.BatchID 
+
+ )
+select r.*,ProductName from remainingItemsTable r join Batches b on b.batchId=r.BatchID join Products p On p.ProductId=b.productId 
+where r.Quantity>0 
+
+
+
+go
