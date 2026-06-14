@@ -86,20 +86,15 @@ CreatedByUserId int foreign key references Users(UserId) not null
 
 
 go
-create view BatchesWithProductsAndUsersName
-as
-select b.*,P.ProductName,u1.UserName As CreatedByUsername,u2.UserName As LastUpdatedByUsername
-from Batches b join Products p on b.productId=p.ProductId join  Users u1 on b.CreatedByUserId=u1.UserId
-left join Users u2 on b.LastUpdatedUserId=u2.UserId
-go
 create view RemainingInvoiceItemsFromRetuns as
+
 with returnItems as(
 select
 it.BatchID,i.prevInvoiceId,sum(it.Quantity) as ReturnedQuantity
 from 
 InvoiceItems it
-join Invoices i on it.InvoiceId=i.InvoiceId where i.prevInvoiceId is not null
-group by it.BatchID,it.SalePrice,i.prevInvoiceId
+join Invoices i on it.InvoiceId=i.InvoiceId where i.TypeId=2 
+group by it.BatchID,i.prevInvoiceId
 
 
 )
@@ -107,6 +102,8 @@ group by it.BatchID,it.SalePrice,i.prevInvoiceId
 select i.ItemId,i.BatchID,i.InvoiceId,i.PurchasePrice,i.SalePrice
 ,(i.Quantity-ISNULL(ri.ReturnedQuantity,0)) as Quantity from InvoiceItems i left join returnItems ri on i.InvoiceId=ri.prevInvoiceId
 and i.BatchID=ri.BatchID 
+join Invoices inv on i.InvoiceId=inv.InvoiceId 
+where inv.TypeId=1
 
  )
 select r.*,ProductName from remainingItemsTable r join Batches b on b.batchId=r.BatchID join Products p On p.ProductId=b.productId 
